@@ -15,6 +15,8 @@ import ProtectedRoute from "./routes/ProtectedRoutes.jsx";
 import AccountPage from "./pages/AccountPage.jsx";
 import AddressesPage from "./pages/AddressesPage.jsx";
 import CheckoutPage from "./pages/CheckoutPage.jsx";
+import OrdersPage from  "./pages/OrdersPage.jsx";
+import OrderDetailsPage from  "./pages/OrderDetailsPage.jsx";
 
 function GuestOnly({ children }) {
     const { token, loading } = useAuth();
@@ -59,6 +61,22 @@ export default function App() {
                             element={
                                 <ProtectedRoute>
                                     <AccountPage />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/account/orders"
+                            element={
+                                <ProtectedRoute>
+                                    <OrdersPage />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/account/orders/:id"
+                            element={
+                                <ProtectedRoute>
+                                    <OrderDetailsPage />
                                 </ProtectedRoute>
                             }
                         />

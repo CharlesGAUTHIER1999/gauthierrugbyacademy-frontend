@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useCart } from "../context/CartContext";
 import { useNavigate } from "react-router-dom";
 
@@ -8,7 +8,6 @@ export default function CartDrawer() {
 
     const drawerRef = useRef(null);
     const closeBtnRef = useRef(null);
-    const lastActiveRef = useRef(null);
 
     const FREE_SHIPPING_THRESHOLD = 70;
 
@@ -18,19 +17,6 @@ export default function CartDrawer() {
         const isFree = subtotal >= FREE_SHIPPING_THRESHOLD;
         return { remaining, progress, isFree };
     }, [subtotal]);
-
-    useEffect(() => {
-        if (isOpen) {
-            lastActiveRef.current = document.activeElement;
-            requestAnimationFrame(() => closeBtnRef.current?.focus());
-        } else {
-            const drawer = drawerRef.current;
-            if (drawer && drawer.contains(document.activeElement)) {
-                document.activeElement.blur();
-            }
-            lastActiveRef.current?.focus?.();
-        }
-    }, [isOpen]);
 
     return (
         <>
@@ -43,16 +29,10 @@ export default function CartDrawer() {
                 ref={drawerRef}
                 className={`cart-drawer ${isOpen ? "is-open" : ""}`}
                 aria-hidden={!isOpen}
-                {...(!isOpen ? { inert: true } : {})}
             >
                 <div className="cart-drawer-header">
                     <h3>Votre panier</h3>
-                    <button
-                        ref={closeBtnRef}
-                        className="cart-close"
-                        onClick={closeCart}
-                        aria-label="Fermer"
-                    >
+                    <button ref={closeBtnRef} className="cart-close" onClick={closeCart} aria-label="Fermer">
                         ✕
                     </button>
                 </div>
@@ -64,24 +44,15 @@ export default function CartDrawer() {
                         </span>
 
                         {freeShip.isFree ? (
-                            <p className="cart-free-ship-text">
-                                Vous avez obtenu la livraison gratuite !
-                            </p>
+                            <p className="cart-free-ship-text">Vous avez obtenu la livraison gratuite !</p>
                         ) : (
                             <p className="cart-free-ship-text">
-                                Plus que <strong>{freeShip.remaining.toFixed(2)} €</strong> pour
-                                la livraison gratuite
+                                Plus que <strong>{freeShip.remaining.toFixed(2)} €</strong> pour la livraison gratuite
                             </p>
                         )}
                     </div>
 
-                    <div
-                        className="cart-free-ship-bar"
-                        role="progressbar"
-                        aria-valuemin={0}
-                        aria-valuemax={FREE_SHIPPING_THRESHOLD}
-                        aria-valuenow={Math.min(subtotal, FREE_SHIPPING_THRESHOLD)}
-                    >
+                    <div className="cart-free-ship-bar" role="progressbar">
                         <div
                             className="cart-free-ship-bar-fill"
                             style={{ width: `${freeShip.progress}%` }}
@@ -107,16 +78,11 @@ export default function CartDrawer() {
                                         </div>
 
                                         <div className="cart-item-meta">
-                                            <div className="cart-item-meta-line">
-                                                Délai de livraison : 4–7 jours ouvrés
-                                            </div>
-
-                                            {it.variantTitle && it.variantValue && (
+                                            {it.variantValue && it.variantTitle && (
                                                 <div className="cart-item-meta-line">
                                                     {it.variantTitle} : {it.variantValue}
                                                 </div>
                                             )}
-
                                             {it.optionLabel && (
                                                 <div className="cart-item-meta-line">
                                                     Option : {it.optionLabel}
@@ -126,43 +92,21 @@ export default function CartDrawer() {
 
                                         <div className="cart-item-actions">
                                             <div className="qty">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => dec(it)}   // ✅ FIX
-                                                    aria-label="Réduire"
-                                                >
+                                                <button type="button" onClick={() => dec(it)} aria-label="Réduire">
                                                     –
                                                 </button>
                                                 <span>{it.quantity}</span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => inc(it)}   // ✅ FIX
-                                                    aria-label="Augmenter"
-                                                >
+                                                <button type="button" onClick={() => inc(it)} aria-label="Augmenter">
                                                     +
                                                 </button>
                                             </div>
 
                                             <button
                                                 className="cart-remove"
-                                                onClick={() => remove(it)}   // ✅ FIX
-                                                aria-label={`Supprimer ${it.name}`}
-                                                title="Supprimer"
+                                                type="button"
+                                                onClick={() => remove(it)}
                                             >
-                                                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                                                    <path
-                                                        d="M9 3h6m-9 4h12m-1 0-1 14H8L7 7"
-                                                        stroke="currentColor"
-                                                        strokeWidth="1.5"
-                                                        strokeLinecap="round"
-                                                    />
-                                                    <path
-                                                        d="M10 11v7M14 11v7"
-                                                        stroke="currentColor"
-                                                        strokeWidth="1.5"
-                                                        strokeLinecap="round"
-                                                    />
-                                                </svg>
+                                                Supprimer
                                             </button>
                                         </div>
                                     </div>
@@ -176,10 +120,6 @@ export default function CartDrawer() {
                     <div className="cart-subtotal">
                         <span>Sous-total</span>
                         <strong>{Number(subtotal).toFixed(2)} €</strong>
-                    </div>
-
-                    <div className="cart-note">
-                        Taxes incluses. Frais d'expédition calculés à l'étape de paiement.
                     </div>
 
                     <button
