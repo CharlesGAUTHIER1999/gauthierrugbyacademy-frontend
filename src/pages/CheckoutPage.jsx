@@ -28,9 +28,7 @@ export default function CheckoutPage() {
         shippingMethod: "standard",
     });
 
-    /** @type {[string|null, import("react").Dispatch<import("react").SetStateAction<string|null>>]} */
     const [clientSecret, setClientSecret] = useState(null);
-
     const [loadingIntent, setLoadingIntent] = useState(false);
     const [intentError, setIntentError] = useState(null);
 
@@ -40,8 +38,10 @@ export default function CheckoutPage() {
     function update(key, value) {
         setForm((prev) => ({ ...prev, [key]: value }));
 
-        // ✅ Si les infos clés changent après création intent => on reset l’intent
-        if (clientSecret && ["address", "zip", "city", "country", "firstname", "lastname"].includes(key)) {
+        if (
+            clientSecret &&
+            ["address", "zip", "city", "country", "firstname", "lastname"].includes(key)
+        ) {
             setClientSecret(null);
         }
     }
@@ -84,16 +84,13 @@ export default function CheckoutPage() {
         } finally {
             setLoadingIntent(false);
         }
-        console.log("token:", localStorage.getItem("token"));
     }
 
     const elementsOptions = useMemo(() => {
         if (!clientSecret) return null;
         return {
             clientSecret,
-            appearance: {
-                theme: "stripe",
-            },
+            appearance: { theme: "stripe" },
         };
     }, [clientSecret]);
 
@@ -101,7 +98,6 @@ export default function CheckoutPage() {
         <>
             <div className="checkout">
                 <div className="checkout-shell">
-                    {/* LEFT */}
                     <section className="checkout-left">
                         <form
                             className="checkout-form"
@@ -110,7 +106,6 @@ export default function CheckoutPage() {
                                 if (!clientSecret) createIntent();
                             }}
                         >
-                            {/* Contact */}
                             <div className="ck-block">
                                 <div className="ck-block-head">
                                     <h2>Contact</h2>
@@ -136,7 +131,6 @@ export default function CheckoutPage() {
                                 </div>
                             </div>
 
-                            {/* Livraison */}
                             <div className="ck-block">
                                 <div className="ck-block-head">
                                     <h2>Livraison</h2>
@@ -289,7 +283,6 @@ export default function CheckoutPage() {
                                 </div>
                             </div>
 
-                            {/* Mode d'expédition */}
                             <div className="ck-block">
                                 <div className="ck-block-head">
                                     <h2>Mode d'expédition</h2>
@@ -305,16 +298,15 @@ export default function CheckoutPage() {
                                             onChange={(e) => update("shippingMethod", e.target.value)}
                                         />
                                         <span className="ck-radio-label">
-                      Livraison
-                      <span className="ck-radio-price">
-                        {shippingCost === 0 ? "Gratuite" : `${shippingCost.toFixed(2)} €`}
-                      </span>
-                    </span>
+                                            Livraison
+                                            <span className="ck-radio-price">
+                                                {shippingCost === 0 ? "Gratuite" : `${shippingCost.toFixed(2)} €`}
+                                            </span>
+                                        </span>
                                     </label>
                                 </div>
                             </div>
 
-                            {/* Paiement */}
                             <div className="ck-block">
                                 <div className="ck-block-head">
                                     <h2>Paiement</h2>
@@ -325,13 +317,17 @@ export default function CheckoutPage() {
                                 {intentError && <div className="ck-error">{intentError}</div>}
 
                                 {!clientSecret ? (
-                                    <button className="ck-submit" type="submit" disabled={!canCreateIntent || loadingIntent}>
+                                    <button
+                                        className="ck-submit"
+                                        type="submit"
+                                        disabled={!canCreateIntent || loadingIntent}
+                                    >
                                         {loadingIntent ? "Préparation du paiement..." : "Continuer vers le paiement"}
                                     </button>
                                 ) : (
                                     elementsOptions && (
                                         <Elements stripe={stripePromise} options={elementsOptions}>
-                                            <CheckoutPayment email={form.email} />
+                                            <CheckoutPayment email={form.email} clientSecret={clientSecret} />
                                         </Elements>
                                     )
                                 )}
@@ -345,7 +341,6 @@ export default function CheckoutPage() {
                         </form>
                     </section>
 
-                    {/* RIGHT */}
                     <aside className="checkout-right" aria-label="récapitulatif commande">
                         <div className="ck-summary">
                             <div className="ck-summary-items">
