@@ -1,208 +1,127 @@
-import React, {
-    createContext,
-    useContext,
-    useEffect,
-    useMemo,
-    useReducer,
-    useState,
-} from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import api from "../api/axios";
-
-function makeKey(productId, optionId) {
-    return `${productId}:${optionId ?? "none"}`;
-}
-
-function cartReducer(state, action) {
-    switch (action.type) {
-        case "INIT":
-            return action.payload ?? { items: [] };
-
-        case "ADD_ITEM": {
-            const item = action.payload;
-            const key = makeKey(item.productId, item.optionId);
-
-            const existing = state.items.find((i) => i.key === key);
-
-            if (existing) {
-                return {
-                    ...state,
-                    items: state.items.map((i) =>
-                        i.key === key
-                            ? { ...i, quantity: i.quantity + item.quantity }
-                            : i
-                    ),
-                };
-            }
-
-            return {
-                ...state,
-                items: [
-                    ...state.items,
-                    {
-                        key,
-                        cartItemId: item.cartItemId, // id DB
-                        productId: item.productId,
-                        optionId: item.optionId ?? null,
-                        optionLabel: item.optionLabel ?? null,
-                        variantValue: item.variantValue ?? null,
-                        name: item.name,
-                        price: Number(item.price) || 0,
-                        image: item.image || "/placeholder.jpg",
-                        quantity: item.quantity ?? 1,
-                    },
-                ],
-            };
-        }
-
-        case "SET_QTY": {
-            const { key, quantity } = action.payload;
-            return {
-                ...state,
-                items: state.items.map((i) =>
-                    i.key === key ? { ...i, quantity } : i
-                ),
-            };
-        }
-
-        case "REMOVE":
-            return {
-                ...state,
-                items: state.items.filter((i) => i.key !== action.payload),
-            };
-
-        case "CLEAR":
-            return { items: [] };
-
-        default:
-            return state;
-    }
-}
 
 const CartContext = createContext(null);
 
-export function CartProvider({ children }) {
-    const [state, dispatch] = useReducer(cartReducer, { items: [] });
-    const [isOpen, setIsOpen] = useState(false);
-    const [hydrated, setHydrated] = useState(false);
+function normalizeCart(payload) {
+    const items = Array.isArray(payload?.items) ? payload.items : [];
 
-    useEffect(() => {
-        try {
-            const raw = localStorage.getItem("cart");
-            if (raw) {
-                dispatch({
-                    type: "INIT",
-                    payload: { items: JSON.parse(raw) },
-                });
-            }
-        } catch (e) {
-            console.warn("Failed to load cart:", e);
-        } finally {
-            setHydrated(true);
+    return {
+        items: items.map((it) => ({
+            id: Number(it.id),          // cart_item.id
+            key: String(it.id),         // stable key
+
+            productId: Number(it.product_id),
+            optionId: it.option?.id ?? null,
+
+            name: it.name,
+            image: it.image || "/placeholder.jpg",
+
+            quantity: Number(it.quantity || 0),
+            price: Number(it.unit_price || 0),
+            lineTotal: Number(it.line_total || 0),
+
+            variantTitle: it.variant_title ?? null,
+            variantValue: it.variant_value ?? null,
+            optionLabel: it.option?.label ?? null,
+            size: it.size ?? null,
+            deliveryText: it.delivery_text ?? null,
+        })),
+        count: Number(payload?.count || 0),
+        subtotal: Number(payload?.subtotal || 0),
+        currency: payload?.currency || "EUR",
+    };
+}
+
+export function CartProvider({ children }) {
+    const [cart, setCart] = useState({
+        items: [],
+        count: 0,
+        subtotal: 0,
+        currency: "EUR",
+    });
+
+    const [loading, setLoading] = useState(false);
+    const [isOpen, setIsOpen] = useState(false);
+
+    async function refetchCart() {
+        const token = localStorage.getItem("token");
+        if (!token) {
+            // pas connecté => panier vide (DB)
+            setCart({ items: [], count: 0, subtotal: 0, currency: "EUR" });
+            return;
         }
+
+        setLoading(true);
+        try {
+            const res = await api.get("/cart");
+            setCart(normalizeCart(res.data));
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    // boot: hydrate depuis DB
+    useEffect(() => {
+        void refetchCart();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    useEffect(() => {
-        if (!hydrated) return;
-        localStorage.setItem("cart", JSON.stringify(state.items));
-    }, [hydrated, state.items]);
+    async function addItem({ productId, optionId = null, quantity = 1 }) {
+        await api.post("/cart/items", {
+            product_id: productId,
+            product_option_id: optionId,
+            quantity,
+        });
+        await refetchCart();
+    }
 
-    const count = useMemo(
-        () => state.items.reduce((a, i) => a + i.quantity, 0),
-        [state.items]
-    );
+    async function setQty(cartItemId, quantity) {
+        await api.patch(`/cart/items/${cartItemId}`, { quantity });
+        await refetchCart();
+    }
 
-    const subtotal = useMemo(
-        () => state.items.reduce((a, i) => a + i.price * i.quantity, 0),
-        [state.items]
-    );
+    async function removeItem(cartItemId) {
+        await api.delete(`/cart/items/${cartItemId}`);
+        await refetchCart();
+    }
 
-    // (optionnel) si tu veux plus tard hydrater depuis DB
-    async function syncFromBackend() {
-        // const res = await api.get("/cart");
-        // dispatch({ type: "INIT", payload: { items: normalize(res.data.items) } });
+    /**
+     * Clear "optimiste" (front) + refetch (back)
+     * - utile après paiement: ton webhook vide la DB, donc refetch => OK
+     */
+    async function clear() {
+        setCart({ items: [], count: 0, subtotal: 0, currency: "EUR" });
+        await refetchCart();
     }
 
     const value = useMemo(
         () => ({
-            items: state.items,
-            count,
-            subtotal,
+            items: cart.items,
+            count: cart.count,
+            subtotal: cart.subtotal,
+            currency: cart.currency,
+            loading,
             isOpen,
 
             openCart: () => setIsOpen(true),
             closeCart: () => setIsOpen(false),
 
-            syncFromBackend,
-
-            addItem: async (item) => {
-                const res = await api.post("/cart/items", {
-                    product_id: item.productId,
-                    product_option_id: item.optionId ?? null,
-                    quantity: item.quantity ?? 1,
-                });
-
-                dispatch({
-                    type: "ADD_ITEM",
-                    payload: {
-                        ...item,
-                        cartItemId: res.data.id,
-                    },
-                });
-            },
-
-            inc: async (item) => {
-                if (!item?.cartItemId) {
-                    // fallback purement local
-                    dispatch({
-                        type: "SET_QTY",
-                        payload: { key: item.key, quantity: item.quantity + 1 },
-                    });
-                    return;
-                }
-
-                await api.patch(`/cart/items/${item.cartItemId}`, {
-                    quantity: item.quantity + 1,
-                });
-
-                dispatch({
-                    type: "SET_QTY",
-                    payload: { key: item.key, quantity: item.quantity + 1 },
-                });
-            },
-
-            dec: async (item) => {
-                const q = Math.max(1, item.quantity - 1);
-
-                if (!item?.cartItemId) {
-                    dispatch({ type: "SET_QTY", payload: { key: item.key, quantity: q } });
-                    return;
-                }
-
-                await api.patch(`/cart/items/${item.cartItemId}`, {
-                    quantity: q,
-                });
-
-                dispatch({
-                    type: "SET_QTY",
-                    payload: { key: item.key, quantity: q },
-                });
-            },
-
-            remove: async (item) => {
-                if (item?.cartItemId) {
-                    await api.delete(`/cart/items/${item.cartItemId}`);
-                }
-                dispatch({ type: "REMOVE", payload: item.key });
-            },
-
-            clear: () => dispatch({ type: "CLEAR" }),
+            refetchCart,
+            addItem,
+            inc: (item) => setQty(item.id, item.quantity + 1),
+            dec: (item) => setQty(item.id, Math.max(1, item.quantity - 1)),
+            remove: (item) => removeItem(item.id),
+            clear,
         }),
-        [state.items, count, subtotal, isOpen]
+        [cart, loading, isOpen]
     );
 
     return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
 
 export function useCart() {
-    return useContext(CartContext);
+    const ctx = useContext(CartContext);
+    if (!ctx) throw new Error("useCart must be used within CartProvider");
+    return ctx;
 }
