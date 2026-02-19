@@ -1,0 +1,32 @@
+name: CI (Frontend)
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  front-ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint || true
+
+      - name: Build
+        env:
+          VITE_API_URL: "http://127.0.0.1:8000/api"
+          VITE_STRIPE_PUBLIC_KEY: "pk_test_dummy"
+        run: npm run build
