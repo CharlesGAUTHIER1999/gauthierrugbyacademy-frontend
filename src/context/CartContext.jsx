@@ -1,5 +1,82 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+    createContext,
+    useCallback,
+    useContext,
+    useEffect,
+    useMemo,
+    useState,
+} from "react";
 import api from "../api/axios";
+
+function makeKey(productId, optionId) {
+    return `${productId}:${optionId ?? "none"}`;
+}
+
+function cartReducer(state, action) {
+    switch (action.type) {
+        case "INIT":
+            return action.payload ?? { items: [] };
+
+        case "ADD_ITEM": {
+            const item = action.payload;
+            const key = makeKey(item.productId, item.optionId);
+
+            const existing = state.items.find((i) => i.key === key);
+
+            if (existing) {
+                return {
+                    ...state,
+                    items: state.items.map((i) =>
+                        i.key === key
+                            ? { ...i, quantity: i.quantity + item.quantity }
+                            : i
+                    ),
+                };
+            }
+
+            return {
+                ...state,
+                items: [
+                    ...state.items,
+                    {
+                        key,
+                        cartItemId: item.cartItemId, // id DB
+                        productId: item.productId,
+                        optionId: item.optionId ?? null,
+                        optionLabel: item.optionLabel ?? null,
+                        variantValue: item.variantValue ?? null,
+                        name: item.name,
+                        price: Number(item.price) || 0,
+                        image: item.image || "/placeholder.jpg",
+                        quantity: item.quantity ?? 1,
+                    },
+                ],
+            };
+        }
+
+        case "SET_QTY": {
+            const { key, quantity } = action.payload;
+            return {
+                ...state,
+                items: state.items.map((i) =>
+                    i.key === key ? { ...i, quantity } : i
+                ),
+            };
+        }
+
+        case "REMOVE":
+            return {
+                ...state,
+                items: state.items.filter((i) => i.key !== action.payload),
+            };
+
+        case "CLEAR":
+            return { items: [] };
+
+        default:
+            return state;
+    }
+}
 
 const CartContext = createContext(null);
 
@@ -8,8 +85,8 @@ function normalizeCart(payload) {
 
     return {
         items: items.map((it) => ({
-            id: Number(it.id),          // cart_item.id
-            key: String(it.id),         // stable key
+            id: Number(it.id),
+            key: String(it.id),
 
             productId: Number(it.product_id),
             optionId: it.option?.id ?? null,
@@ -34,78 +111,80 @@ function normalizeCart(payload) {
 }
 
 export function CartProvider({ children }) {
-    const [cart, setCart] = useState({
-        items: [],
-        count: 0,
-        subtotal: 0,
-        currency: "EUR",
-    });
-
-    const [loading, setLoading] = useState(false);
+    const [state, dispatch] = useReducer(cartReducer, { items: [] });
     const [isOpen, setIsOpen] = useState(false);
 
-    async function refetchCart() {
+    const openCart = useCallback(() => {
+        setIsOpen(true);
+    }, []);
+
+    const closeCart = useCallback(() => {
+        setIsOpen(false);
+    }, []);
+
+    const refetchCart = useCallback(async () => {
         const token = localStorage.getItem("token");
+
         if (!token) {
-            // pas connecté => panier vide (DB)
             setCart({ items: [], count: 0, subtotal: 0, currency: "EUR" });
             return;
         }
 
         setLoading(true);
-        try {
-            const res = await api.get("/cart");
-            setCart(normalizeCart(res.data));
-        } finally {
-            setLoading(false);
-        }
-    }
 
-    // boot: hydrate depuis DB
-    useEffect(() => {
-        void refetchCart();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+        try {
+            const raw = localStorage.getItem("cart");
+            if (raw) {
+                dispatch({
+                    type: "INIT",
+                    payload: { items: JSON.parse(raw) },
+                });
+            }
+        } catch (e) {
+            console.warn("Failed to load cart:", e);
+        } finally {
+            setHydrated(true);
+        }
     }, []);
 
-    async function addItem({ productId, optionId = null, quantity = 1 }) {
+    useEffect(() => {
+        void refetchCart();
+    }, [refetchCart]);
+
+    const addItem = useCallback(async ({ productId, optionId = null, quantity = 1 }) => {
         await api.post("/cart/items", {
             product_id: productId,
             product_option_id: optionId,
             quantity,
         });
-        await refetchCart();
-    }
 
-    async function setQty(cartItemId, quantity) {
+        await refetchCart();
+    }, [refetchCart]);
+
+    const setQty = useCallback(async (cartItemId, quantity) => {
         await api.patch(`/cart/items/${cartItemId}`, { quantity });
         await refetchCart();
-    }
+    }, [refetchCart]);
 
-    async function removeItem(cartItemId) {
+    const removeItem = useCallback(async (cartItemId) => {
         await api.delete(`/cart/items/${cartItemId}`);
         await refetchCart();
-    }
+    }, [refetchCart]);
 
-    /**
-     * Clear "optimiste" (front) + refetch (back)
-     * - utile après paiement: ton webhook vide la DB, donc refetch => OK
-     */
-    async function clear() {
+    const clear = useCallback(async () => {
         setCart({ items: [], count: 0, subtotal: 0, currency: "EUR" });
         await refetchCart();
-    }
+    }, [refetchCart]);
 
     const value = useMemo(
         () => ({
-            items: cart.items,
-            count: cart.count,
-            subtotal: cart.subtotal,
-            currency: cart.currency,
-            loading,
+            items: state.items,
+            count,
+            subtotal,
             isOpen,
 
-            openCart: () => setIsOpen(true),
-            closeCart: () => setIsOpen(false),
+            openCart,
+            closeCart,
 
             refetchCart,
             addItem,
@@ -114,7 +193,18 @@ export function CartProvider({ children }) {
             remove: (item) => removeItem(item.id),
             clear,
         }),
-        [cart, loading, isOpen]
+        [
+            cart,
+            loading,
+            isOpen,
+            openCart,
+            closeCart,
+            refetchCart,
+            addItem,
+            setQty,
+            removeItem,
+            clear,
+        ]
     );
 
     return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
@@ -122,6 +212,10 @@ export function CartProvider({ children }) {
 
 export function useCart() {
     const ctx = useContext(CartContext);
-    if (!ctx) throw new Error("useCart must be used within CartProvider");
+
+    if (!ctx) {
+        throw new Error("useCart must be used within CartProvider");
+    }
+
     return ctx;
 }

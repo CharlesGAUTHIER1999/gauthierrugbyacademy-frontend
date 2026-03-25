@@ -1,13 +1,9 @@
-// src/pages/PaymentSuccess.jsx
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useCart } from "../context/CartContext.jsx";
 
 export default function PaymentSuccess() {
     const location = useLocation();
-    const { refetchCart, closeCart } = useCart();
-
-    const [done, setDone] = useState(false);
 
     const params = useMemo(
         () => new URLSearchParams(location.search),
@@ -20,16 +16,22 @@ export default function PaymentSuccess() {
     const isDev = import.meta.env.DEV;
 
     useEffect(() => {
+        let cancelled = false;
+
         (async () => {
             try {
-                // ✅ resync panier depuis DB (source de vérité)
                 await refetchCart();
-                // ✅ referme le drawer si ouvert
                 closeCart?.();
             } finally {
-                setDone(true);
+                if (!cancelled) {
+                    setDone(true);
+                }
             }
         })();
+
+        return () => {
+            cancelled = true;
+        };
     }, [refetchCart, closeCart]);
 
     return (
@@ -48,7 +50,6 @@ export default function PaymentSuccess() {
                     </p>
                 )}
 
-                {/* ✅ PaymentIntent affiché seulement en DEV */}
                 {isDev && paymentIntent && (
                     <p style={{ wordBreak: "break-word" }}>
                         PaymentIntent : <strong>{paymentIntent}</strong>
