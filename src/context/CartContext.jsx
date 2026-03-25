@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+    createContext,
+    useCallback,
+    useContext,
+    useEffect,
+    useMemo,
+    useState,
+} from "react";
 import api from "../api/axios";
 
 const CartContext = createContext(null);
@@ -8,8 +15,8 @@ function normalizeCart(payload) {
 
     return {
         items: items.map((it) => ({
-            id: Number(it.id),          // cart_item.id
-            key: String(it.id),         // stable key
+            id: Number(it.id),
+            key: String(it.id),
 
             productId: Number(it.product_id),
             optionId: it.option?.id ?? null,
@@ -44,56 +51,60 @@ export function CartProvider({ children }) {
     const [loading, setLoading] = useState(false);
     const [isOpen, setIsOpen] = useState(false);
 
-    async function refetchCart() {
+    const openCart = useCallback(() => {
+        setIsOpen(true);
+    }, []);
+
+    const closeCart = useCallback(() => {
+        setIsOpen(false);
+    }, []);
+
+    const refetchCart = useCallback(async () => {
         const token = localStorage.getItem("token");
+
         if (!token) {
-            // pas connecté => panier vide (DB)
             setCart({ items: [], count: 0, subtotal: 0, currency: "EUR" });
             return;
         }
 
         setLoading(true);
+
         try {
             const res = await api.get("/cart");
             setCart(normalizeCart(res.data));
         } finally {
             setLoading(false);
         }
-    }
-
-    // boot: hydrate depuis DB
-    useEffect(() => {
-        void refetchCart();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    async function addItem({ productId, optionId = null, quantity = 1 }) {
+    useEffect(() => {
+        void refetchCart();
+    }, [refetchCart]);
+
+    const addItem = useCallback(async ({ productId, optionId = null, quantity = 1 }) => {
         await api.post("/cart/items", {
             product_id: productId,
             product_option_id: optionId,
             quantity,
         });
-        await refetchCart();
-    }
 
-    async function setQty(cartItemId, quantity) {
+        await refetchCart();
+    }, [refetchCart]);
+
+    const setQty = useCallback(async (cartItemId, quantity) => {
         await api.patch(`/cart/items/${cartItemId}`, { quantity });
         await refetchCart();
-    }
+    }, [refetchCart]);
 
-    async function removeItem(cartItemId) {
+    const removeItem = useCallback(async (cartItemId) => {
         await api.delete(`/cart/items/${cartItemId}`);
         await refetchCart();
-    }
+    }, [refetchCart]);
 
-    /**
-     * Clear "optimiste" (front) + refetch (back)
-     * - utile après paiement: ton webhook vide la DB, donc refetch => OK
-     */
-    async function clear() {
+    const clear = useCallback(async () => {
         setCart({ items: [], count: 0, subtotal: 0, currency: "EUR" });
         await refetchCart();
-    }
+    }, [refetchCart]);
 
     const value = useMemo(
         () => ({
@@ -104,8 +115,8 @@ export function CartProvider({ children }) {
             loading,
             isOpen,
 
-            openCart: () => setIsOpen(true),
-            closeCart: () => setIsOpen(false),
+            openCart,
+            closeCart,
 
             refetchCart,
             addItem,
@@ -114,7 +125,18 @@ export function CartProvider({ children }) {
             remove: (item) => removeItem(item.id),
             clear,
         }),
-        [cart, loading, isOpen]
+        [
+            cart,
+            loading,
+            isOpen,
+            openCart,
+            closeCart,
+            refetchCart,
+            addItem,
+            setQty,
+            removeItem,
+            clear,
+        ]
     );
 
     return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
@@ -122,6 +144,10 @@ export function CartProvider({ children }) {
 
 export function useCart() {
     const ctx = useContext(CartContext);
-    if (!ctx) throw new Error("useCart must be used within CartProvider");
+
+    if (!ctx) {
+        throw new Error("useCart must be used within CartProvider");
+    }
+
     return ctx;
 }
