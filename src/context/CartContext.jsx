@@ -8,6 +8,76 @@ import React, {
 } from "react";
 import api from "../api/axios";
 
+function makeKey(productId, optionId) {
+    return `${productId}:${optionId ?? "none"}`;
+}
+
+function cartReducer(state, action) {
+    switch (action.type) {
+        case "INIT":
+            return action.payload ?? { items: [] };
+
+        case "ADD_ITEM": {
+            const item = action.payload;
+            const key = makeKey(item.productId, item.optionId);
+
+            const existing = state.items.find((i) => i.key === key);
+
+            if (existing) {
+                return {
+                    ...state,
+                    items: state.items.map((i) =>
+                        i.key === key
+                            ? { ...i, quantity: i.quantity + item.quantity }
+                            : i
+                    ),
+                };
+            }
+
+            return {
+                ...state,
+                items: [
+                    ...state.items,
+                    {
+                        key,
+                        cartItemId: item.cartItemId, // id DB
+                        productId: item.productId,
+                        optionId: item.optionId ?? null,
+                        optionLabel: item.optionLabel ?? null,
+                        variantValue: item.variantValue ?? null,
+                        name: item.name,
+                        price: Number(item.price) || 0,
+                        image: item.image || "/placeholder.jpg",
+                        quantity: item.quantity ?? 1,
+                    },
+                ],
+            };
+        }
+
+        case "SET_QTY": {
+            const { key, quantity } = action.payload;
+            return {
+                ...state,
+                items: state.items.map((i) =>
+                    i.key === key ? { ...i, quantity } : i
+                ),
+            };
+        }
+
+        case "REMOVE":
+            return {
+                ...state,
+                items: state.items.filter((i) => i.key !== action.payload),
+            };
+
+        case "CLEAR":
+            return { items: [] };
+
+        default:
+            return state;
+    }
+}
+
 const CartContext = createContext(null);
 
 function normalizeCart(payload) {
@@ -41,14 +111,7 @@ function normalizeCart(payload) {
 }
 
 export function CartProvider({ children }) {
-    const [cart, setCart] = useState({
-        items: [],
-        count: 0,
-        subtotal: 0,
-        currency: "EUR",
-    });
-
-    const [loading, setLoading] = useState(false);
+    const [state, dispatch] = useReducer(cartReducer, { items: [] });
     const [isOpen, setIsOpen] = useState(false);
 
     const openCart = useCallback(() => {
@@ -70,10 +133,17 @@ export function CartProvider({ children }) {
         setLoading(true);
 
         try {
-            const res = await api.get("/cart");
-            setCart(normalizeCart(res.data));
+            const raw = localStorage.getItem("cart");
+            if (raw) {
+                dispatch({
+                    type: "INIT",
+                    payload: { items: JSON.parse(raw) },
+                });
+            }
+        } catch (e) {
+            console.warn("Failed to load cart:", e);
         } finally {
-            setLoading(false);
+            setHydrated(true);
         }
     }, []);
 
@@ -108,11 +178,9 @@ export function CartProvider({ children }) {
 
     const value = useMemo(
         () => ({
-            items: cart.items,
-            count: cart.count,
-            subtotal: cart.subtotal,
-            currency: cart.currency,
-            loading,
+            items: state.items,
+            count,
+            subtotal,
             isOpen,
 
             openCart,

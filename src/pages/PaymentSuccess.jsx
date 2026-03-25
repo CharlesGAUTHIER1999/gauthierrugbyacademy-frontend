@@ -4,9 +4,6 @@ import { useCart } from "../context/CartContext.jsx";
 
 export default function PaymentSuccess() {
     const location = useLocation();
-    const { refetchCart, closeCart } = useCart();
-
-    const [done, setDone] = useState(false);
 
     const params = useMemo(
         () => new URLSearchParams(location.search),
